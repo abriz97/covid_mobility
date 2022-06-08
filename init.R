@@ -22,6 +22,8 @@ stopifnot(dir.exists(indir))
 outdir <- file.path(indir, 'results')
 data.dir <- file.path(indir, 'data')
 
+selected.countries <- c("England", "NorthernIreland", "Scotland", "Wales", "Ireland")
+
 ################
 #    HELPERS   #
 ################
@@ -75,14 +77,21 @@ cols <- sapply(dmob, is.character)
 cols <- names(cols)[cols]
 dmob <- dmob[, (cols):=lapply(.SD, empty2na) , .SDcols=cols]
 
+# SUBSET TO UK + IRELAND
+# Check: are there mobility measures specific to countries within the UK
+dmob_sub <- dmob[ region %in% selected.countries ]
 
-# dcovid seems better presented 
+# dcovid seems better presented a
 setnames(dcovid, 'Date_reported', 'date')
 dcountry <- make_dcountries(dcovid)
 
 # however there are some issues, ie negative daily cases
 cat('Setting reports with negative numbers of cases to 0...\n')
 dcovid[New_deaths < 0, New_deaths := 0]
+
+dcovid[Country %in% selected.countries]
+dcovid[, unique(Country)]
+
 
 
 dmob[, table(geo_type)]
@@ -126,7 +135,6 @@ plot_mobility_deaths <- function(state)
         # need to change
         stopifnot(state %in% dcountry$Country_code)
 
-        str(dmob)
         tmp_mob <- dmob[Country_code == state]
         tmp_cov <- dcovid[Country_code == state]
         tmp_cov[, date:=as.Date(date, format='%Y-%m-%d')]
@@ -143,16 +151,8 @@ plot_mobility_deaths <- function(state)
         daxis[, min:=as.numeric(min)]
         daxis[, delta := max-0]
         daxis[, delta2 := c(delta[1]/delta[2], delta[2]/delta[1])]
-        # force(daxis)
 
-        str(tmp_mob)
-        tmp_mob[, mobility]
-        daxis$delta2[2]
-        tmp_mob
         tmp_mob[, mob_scaled := mobility / daxis$delta2[2]]
-
-        str(tmp_mob)
-        str(tmp_cov)
         tmp_mob[, date:=as.Date(date, format='%Y-%m-%d')]
 
         span <- 1/21
@@ -188,4 +188,4 @@ fwrite(dcovid, filename)
 filename=file.path(data.dir, 'apple_mobility_bycountry_processed.csv')
 fwrite(dmob, filename)
 
-
+# TODO: save subsetted data for UK + Ireland
