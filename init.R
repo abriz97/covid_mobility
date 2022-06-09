@@ -15,14 +15,17 @@ if(usr == 'andrea')
 {
         indir <- '~/git/covid_mobility'
 }else{
-
+        indir <- '~/git/covid_mobility'
 }
 
 stopifnot(dir.exists(indir))
 outdir <- file.path(indir, 'results')
 data.dir <- file.path(indir, 'data')
 
-selected.countries <- c("England", "NorthernIreland", "Scotland", "Wales", "Ireland")
+path.apple.mobility <- file.path(data.dir, "applemobilitytrends-2022-04-03.csv")
+path.WHO.covid <- file.path(data.dir,"WHO-COVID-19-global-data.csv")
+
+selected.countries <- c("England", "NorthernIreland", "Scotland", "Wales")
 
 ################
 #    HELPERS   #
@@ -54,14 +57,8 @@ make_dcountries <- function(DT)
 #     MAIN     #
 ################
 
-list.files(data.dir)
-
-path.apple.mobility <- file.path(data.dir, "applemobilitytrends-2022-04-03.csv")
-path.WHO.covid <- file.path(data.dir,"WHO-COVID-19-global-data.csv")
-
 dmob <- fread(path.apple.mobility, header=TRUE)
 dcovid <- fread(path.WHO.covid)
-
 
 # reshape dmob
 idx <- grepl('^20', names(dmob))
@@ -180,6 +177,7 @@ p <- ggarrange(p0, p1, p2, p3,
                ncol=2, nrow=2,
                common.legend=TRUE,
                legend='bottom')
+
 filename = file.path(outdir, 'logdeaths_by_mobility_ITESDEFR.png')
 ggsave(p, filename=filename, w=9, h=8)
 
@@ -188,4 +186,7 @@ fwrite(dcovid, filename)
 filename=file.path(data.dir, 'apple_mobility_bycountry_processed.csv')
 fwrite(dmob, filename)
 
-# TODO: save subsetted data for UK + Ireland
+dmob_sub[, `:=` (geo_type = NULL, `sub-region` = NULL, country=NULL)]
+setnames(dmob_sub, 'region', 'country')
+filename=file.path(data.dir, 'apple_mobility_bycountry_processed_UK.csv')
+fwrite(dmob_sub, filename)
