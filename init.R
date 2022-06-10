@@ -126,8 +126,10 @@ dcovid[is.na(Country_code), unique(Country2)]
 plot_mobility_deaths <- function(state)
 {
         # TODO:
+        # UK countries: gov data
+        # Take mean of mobility measures
         # Improve x axis
-        # secondary axis needes percentage labels.
+        # secondary axis needs percentage labels.
 
         # need to change
         stopifnot(state %in% dcountry$Country_code)
