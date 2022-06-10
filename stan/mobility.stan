@@ -132,11 +132,6 @@ model{
   // Do not consider the first deaths, there are no past deaths which 
   //   the model can use to justify their existence.
   // deaths[1] ~ neg_binomial_2(RD[1] * (deaths0 * omega[1] + deaths[1] * omega0), delta);
-  
-  for (n in 1:2)
-  {
-
-  }
 
   for (n in 2:N){
     // sumD_omega = deaths0 * omega[n]; // s = 0
@@ -154,20 +149,22 @@ model{
       conv_phiDw_alpha += D_alpha[n-s] * w_alpha[s];
     }
 
-    print("")
-    print("The value of conv_phiDw_wildtype[", n, "] is ", conv_phiDw_wildtype);
-    print("The value of conv_phiDw_alpha[", n, "] is ", conv_phiDw_alpha);
+    // print("")
+    // print("The value of conv_phiDw_wildtype[", n, "] is ", conv_phiDw_wildtype);
+    // print("The value of conv_phiDw_alpha[", n, "] is ", conv_phiDw_alpha);
+    
     // no no no: w[0] should be 0
     // sumD_omega += deaths[n] * omega0; // s = n
+
     mu[n] = RD_wildtype[n] * conv_phiDw_wildtype + RD_alpha[n] * conv_phiDw_alpha;
-    print("The value of mu[", n, "] is ", mu[n]);
-    deaths[n] ~ neg_binomial_2( mu[n] , delta);
+    if(n > 14)
+    {
+      // print("The value of mu[", n, "] is ", mu[n]);
+      deaths[n] ~ neg_binomial_2( mu[n] , delta);
+    }
 
   }
 }
 
 generated quantities{
-
-  real conv_w_test;
-  real conv_a_test;
 }

@@ -55,6 +55,19 @@ path.gov.data <- file.path(data.dir, 'UKgovernment_deaths_cases.csv')
 #    HELPERS   #
 ################
 
+make.quantiles <- function(DT, prm = NA_character_)
+{
+        by_cols <- intersect(names(DT), 'day')
+        DT[, {
+                z <- quantile(value, probs=c(.025,.25,.5,.75,.975));
+                list(CL = z[1], IL = z[2], M = z[3], IU=z[4], CU=z[5])
+             }, by=by_cols] -> tmp
+
+        if( !is.na(prm) ) tmp[, prm := prm]
+
+        if( 'day' %in% names(tmp)) tmp <- merge(dict_daydate, tmp,  all.y=TRUE)
+        tmp
+}
 
 ################
 #     MAIN     #
@@ -138,25 +151,33 @@ dict_daydate <- data.table(date=stan_data$dates)
 dict_daydate[, day := seq(.N)]
 dict_daydate
 
+# calculate convolutions for mean of NB:
+with(stan_data,
+     {
+             tmp <- convolve(deaths * (1-phi),  w_wildtype, type='open');
+             data.table(
+                        date = dates,
+                        wildtype = head(c(0, tmp), length(deaths))
+             )
+     }
+) -> conv_wildtype
 
+with(stan_data,
+     {
+             tmp <- convolve(deaths * phi,  w_alpha, type='open');
+             data.table(
+                        date = dates,
+                        alpha = head(c(0, tmp), length(deaths))
+             )
+     }
+) -> conv_alpha
+convs_phiDw <- merge(conv_wildtype, conv_alpha)
+rm(conv_wildtype, conv_alpha)
 
 
 # Make custom posterior plots
 #____________________________
 
-make.quantiles <- function(DT, prm = NA_character_)
-{
-        by_cols <- intersect(names(DT), 'day')
-        DT[, {
-                z <- quantile(value, probs=c(.025,.25,.5,.75,.975));
-                list(CL = z[1], IL = z[2], M = z[3], IU=z[4], CU=z[5])
-             }, by=by_cols] -> tmp
-
-        if( !is.na(prm) ) tmp[, prm := prm]
-
-        if( 'day' %in% names(tmp)) tmp <- merge(dict_daydate, tmp,  all.y=TRUE)
-        tmp
-}
 
 # Plot posterior RD's 
 pa <- rbind(
@@ -164,40 +185,75 @@ pa <- rbind(
             make.quantiles(pos$RD_wildtype, prm='RD_wildtype')
 )
 
-ggplot(pa, aes(x=date, color=prm, fill=prm)) + 
+g <- ggplot(pa, aes(x=date, color=prm, fill=prm)) + 
         geom_ribbon(aes(ymin=IL, ymax=IU), alpha=.5) + 
-        geom_line(aes(y=M)) 
+        geom_line(aes(y=M)) +
+        scale_x_date(breaks='1 month' , date_labels = "%b-%y") +
+        theme_bw() +
+        theme(legend.position = 'bottom') + 
+        labs(x='', y='variant-specific Deaths reproduction number')
+
+# mean of NB against deaths:
+setkey(pa, prm, day, date)
+cols <- c('CL', 'IL', 'M', 'IU', 'CU')
+
+tmp1 <- pa[ prm == 'RD_alpha', lapply(.SD, `*`, convs_phiDw$alpha ) , .SDcols=cols]
+tmp1[, `:=` (day = 1:.N, variant='alpha')]
+tmp2 <- pa[ prm == 'RD_wildtype', lapply(.SD, `*`, convs_phiDw$wildtype ) , .SDcols=cols]
+tmp2[, `:=` (day = 1:.N, variant='wildtype')]
+pas <- rbind(tmp2, tmp1)
+pas <- merge(dict_daydate, pas, all.y=T)
+rm(tmp1, tmp2)
+
+# get deaths data
+with(stan_data,
+     rbind(
+        data.table(date=dates, deaths=deaths*(1-phi),variant='wildtype'),
+        data.table(date=dates, deaths=deaths*phi, variant='alpha')
+     )
+) -> tmp
+tmp
+
+# Joint
+p0 <- ggplot(data=pas, aes(x=date, color=variant, fill=variant)) + 
+        geom_col(data=tmp, aes(y=deaths, fill=variant)) + 
+        geom_line(aes(y=M)) + 
+        geom_ribbon(aes(ymin=IL, ymax=IU), alpha=.5) +
+        facet_grid(~'Overall') +
+        scale_x_date(breaks='1 month' , date_labels = "%b-%y") +
+        theme_bw() + 
+        theme(legend.position='bottom') +
+        labs(x='', y='COVID-19 attributable deaths')
+
+# one var
+p1 <- ggplot(data=pas, aes(x=date, color=variant, fill=variant)) + 
+        geom_col(data=tmp, aes(y=deaths), color='grey80') + 
+        geom_line(aes(y=M)) + 
+        geom_ribbon(aes(ymin=IL, ymax=IU), alpha=.5) + 
+        facet_grid(~variant) +
+        theme_bw() + 
+        scale_x_date(breaks='1 month' , date_labels = "%b-%y") +
+        theme(legend.position='bottom') + 
+        labs(x='', y='COVID-19 attributable deaths')
+
+require(ggpubr)
+ggarrange(p0, p1,
+          nrow=2,
+          legend='bottom',
+          common.legend=TRUE)
 
 
 # Plot posterior R's 
 pa <- rbind(
-            make.quantiles(pos$RD_alpha, prm='R_alpha'), 
-            make.quantiles(pos$RD_wildtype, prm='R_wildtype')
+            make.quantiles(pos$R_alpha, prm='R_alpha'), 
+            make.quantiles(pos$R_wildtype, prm='R_wildtype')
 )
 
 # TODO: maybe add mobility...
 ggplot(pa, aes(x=date, color=prm, fill=prm)) + 
-        # geom_ribbon(aes(ymin=IL, ymax=IU), alpha=.5) + 
-        geom_line(aes(y=M))
-
-pos$RD_alpha[value > 100]
-pos$R_alpha[value > 100]
-
-# There definitely are problems, possibly with the convolutions...
-
-?convolve
-convolve(c(1,2,3), c(1,2), type='open')
-convolve()
-
-tmp <- data.table(
-        deaths_wildtype = stan_data$deaths * (1-stan_data$phi),
-        deaths_alpha = stan_data$deaths * stan_data$phi
-)
-tmp[, day := 1:.N]
-tmp <- merge(dict_daydate, tmp)
-
-
-convolve(stan_data$deaths, stan_data$)
-
-
-pos$beta_alpha
+        geom_ribbon(aes(ymin=IL, ymax=IU), alpha=.5) + 
+        geom_line(aes(y=M)) + 
+        scale_x_date(breaks='1 month' , date_labels = "%b-%y") +
+        theme_bw() +
+        theme(legend.position = 'bottom') + 
+        labs(x='', y='variant-specific reproduction number')
