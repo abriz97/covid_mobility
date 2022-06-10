@@ -3,6 +3,8 @@
 # need to load data on:
 # mobility, UK government data, variant frequency
 
+# Run as 
+
 ################
 # DEPENDENCIES #
 ################
@@ -10,6 +12,7 @@
 library(rstan)
 library(data.table)
 library(ggplot2)
+library(bayesplot)
 
 ################
 #  ARGUMENTS   #
@@ -19,7 +22,7 @@ option_list <- list(
   optparse::make_option(
     c("c", "--country"),
     type = "character",
-    default = NA_character_,
+    default = 'England',
     help = "Country for which to run analysis[must be one of England, Scotland, NothernIreland, Wales]",
     dest = 'country'
   ),
@@ -54,13 +57,8 @@ args$max_date <- as.Date(args$max_date, format='%Y-%m-%d')
 #    PATHS     #
 ################
 
-usr <- Sys.info()[['user']]
-if(usr == 'andrea')
-{
-        indir <- '~/git/covid_mobility/'
-}else{
-        indir <- '~/git/covid_mobility/'
-}
+indir <- getwd()
+indir <- gsub('covid_mobility/.*$', 'covid_mobility', indir)
 
 data.dir <- file.path(indir, 'data')
 results.dir <- file.path(indir, 'results')
@@ -89,29 +87,30 @@ path.gov.data <- file.path(data.dir, 'UKgovernment_deaths_cases.csv')
         DT
 }
 
+convolve.past <- function(vec1, vec2)
+{
+        L1 <- length(vec1)
+        L2 <- length(vec2)
+        out <- rep(NA, length(vec1))
+
+        vec1_pad <- c(rep(0, L2 - 1 ), vec1)
+        vec2_rev <- rev(vec2)
+        
+        for(i in seq_along(vec1))
+        {
+                vec2_pad <- c(rep(0, i-1), vec2_rev, rep(0, L1 - i ) )
+                out[i] <- as.numeric(vec1_pad %*% vec2_pad)
+        }
+
+        return(c(NA, out[-length(out)]))
+}
+
 make_dataset <- function(country=args$country, max_date=args$max_date, ratio_alpha_mortality = args$ratio_alpha_mortality)
 {
 
         # ratio_alpha_mortality = 1.6
         # country= 'England'
 
-        .convolve.past <- function(vec1, vec2)
-        {
-                L1 <- length(vec1)
-                L2 <- length(vec2)
-                out <- rep(NA, length(vec1))
-
-                vec1_pad <- c(rep(0, L2 - 1 ), vec1)
-                vec2_rev <- rev(vec2)
-                
-                for(i in seq_along(vec1))
-                {
-                        vec2_pad <- c(rep(0, i-1), vec2_rev, rep(0, L1 - i ) )
-                        out[i] <- as.numeric(vec1_pad %*% vec2_pad)
-                }
-
-                return(c(NA, out[-length(out)]))
-        }
 
         .make_discrete_gamma_pmf <- function(mean, std)
         {
@@ -209,8 +208,8 @@ make_dataset <- function(country=args$country, max_date=args$max_date, ratio_alp
         ggplot(dalpha_tmp, aes(x=date, y=cases)) + geom_point()
 
         dalpha_tmp <- dalpha_tmp[!is.na(cases)]
-        dalpha_tmp[, alpha_conv := .convolve.past(proportion*cases, stan_data$h_alpha )]
-        dalpha_tmp[, wildtype_conv := .convolve.past((1-proportion)*cases, stan_data$h_wildtype )]
+        dalpha_tmp[, alpha_conv := convolve.past(proportion*cases, stan_data$h_alpha )]
+        dalpha_tmp[, wildtype_conv := convolve.past((1-proportion)*cases, stan_data$h_wildtype )]
 
         dalpha_tmp[, tmp := ratio_alpha_mortality * alpha_conv / wildtype_conv ]
         dalpha_tmp[, phi := 1/(1+tmp^(-1))]
@@ -251,13 +250,15 @@ make_dataset <- function(country=args$country, max_date=args$max_date, ratio_alp
                 p
 
                 filename=file.path(results.dir, 'deaths_attributed_to_variant.png')
-                ggsave(filename, p, w=10, h=8)
+                ggsave(filename, p, width=10, height=8)
         }
 
         # merge with ddata to subset to correct time window
         dalpha_tmp <- merge(ddata[, .(date)], dalpha_tmp, all.x=TRUE)
 
         stan_data$phi <- dalpha_tmp$phi
+
+        stan_data$dates <- unique(dalpha_tmp$date)
 
         # Some checks
         cnd <- lapply(stan_data, length)
@@ -295,30 +296,79 @@ if(0) plot( dalpha$date, dalpha$proportion)
 ## FIT STAN
 #__________
 
-stan_data <- make_dataset(country='England')
+stan_data <- make_dataset(country=args$country)
+options(mc.cores = parallel::detectCores())
 
 stan.model.path <- file.path(indir, 'stan', 'mobility.stan')
 model <- stan_model(stan.model.path)
 fit <- sampling(model,
                 data=stan_data, 
-                chains = 1,
-                iter=4000,
-                sample_file='tmp.csv'
+                chains = 2,
+                iter=100
 )
 
-prm <- grep('^R0|^beta|delta', names(fit), value=TRUE)
-plot(fit, pars = prm)
-plot(fit, pars = prm,
+if(0)
+{
+        # test whether convolutions are working:
+        # seems ok except for the fact that some 0 are NA...
+        nms_w <- grep('^D_wildtype',names(fit), value=T)
+        nms_a <- grep('^D_alpha',names(fit), value=T)
+
+        tmp <- as.array(fit)
+        tmp_w <- tmp[,, dimnames(tmp)$parameters %in% nms_w ]
+        tmp_a <- tmp[,, dimnames(tmp)$parameters %in% nms_a ]
+
+        tmp_w
+        tmp_a
+
+        tmp_w <- unname(tmp_w)[2, 2, ]
+        tmp_a <- unname(tmp_a)[2, 2, ]
+
+        stan_data$phi
+        tail(tmp_w)
+        tail(tmp_a)
+
+
+
+        dimnames(tmp_a)
+        tmp <- apply(tmp_a, 3, c)
+        colnames(tmp) <- gsub('[A-z]|\\_|\\[|\\]','',colnames(tmp))
+        head(tmp)
+        dim(apply(tmp_a, 3, c))
+}
+
+# save fit
+tmp <- format(Sys.Date(), '%y%m%d')
+filename = file.path(results.dir,
+                     paste0('chains_', args$country, '_', tmp, '.rds')
+)
+saveRDS(fit, filename)
+
+# Get parameter names stan
+summary(fit)
+prms <- grep('^R0|^beta|delta', names(fit), value=TRUE)
+
+# First plots
+plot(fit, pars = prms)
+plot(fit, pars = prms,
      show_density = TRUE, ci_level = 0.5, fill_color = "purple")
-plot(fit, pars = prm[1],
+plot(fit, pars = prms[1],
      plotfun = "hist", include = FALSE)
 
-plot(fit, pars = grep('R0', prm, value=TRUE),  
+plot(fit, pars = grep('R0', prms, value=TRUE),  
      plotfun = "trace" , inc_warmup = TRUE)
-plot(fit, pars = grep('beta', prm, value=TRUE),  
+plot(fit, pars = grep('beta', prms, value=TRUE),  
      plotfun = "trace" , inc_warmup = TRUE)
 
-plot(fit, pars = prm,
+plot(fit, pars = prms,
      plotfun = "rhat") + ggtitle("Example of adding title to plot")
 
-summary(fit)
+tmp <- format(Sys.Date(), '%y%m%d')
+filename = file.path(results.dir,
+                     paste0('chains_', args$country, '_', tmp, '.rda')
+)
+save.image(filename)
+
+
+grep('^R_wildtype', names(fit), value=TRUE) |> uniqueN()
+grep('^R_wildtype', names(fit), value=TRUE) |> length()

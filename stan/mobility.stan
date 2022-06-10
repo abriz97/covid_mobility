@@ -155,12 +155,8 @@ model{
 
     // no no no: w[0] should be 0
     // sumD_omega += deaths[n] * omega0; // s = n
-    // deaths[n] ~ neg_binomial_2(RD_wildtype[n] * conv_phiDw_wildtype + RD_alpha[n] * conv_phiDw_alpha , delta);
+    deaths[n] ~ neg_binomial_2(RD_wildtype[n] * conv_phiDw_wildtype + RD_alpha[n] * conv_phiDw_alpha , delta);
 
   }
 }
 
-generated quantities {
-
-
-}
