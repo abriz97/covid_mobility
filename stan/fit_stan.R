@@ -1,4 +1,4 @@
-# AIMS:
+#AIMS:
 # prepare the datasets to run stan on
 # need to load data on:
 # mobility, UK government data, variant frequency
@@ -284,6 +284,7 @@ dmobility <- fread(path.mobility.data.uk)
 setnames(dcovid, 'country', 'Country')
 setnames(dmobility, 'country', 'Country')
 
+# TODO: get wiki data and load
 # while waiting for alpha prevalence, assume it increases linearly from 0 to 1 linearly.
 dalpha <- dcovid[, .(Country, date, proportion=0)]
 dalpha[ date >= '2020-10-12', proportion:=NA]

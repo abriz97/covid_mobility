@@ -16,7 +16,7 @@ data{
   real<lower=0> w_alpha[L_w_alpha];
 
   // proportion phi of alpha-attributable deaths
-  real<lower=0, upper=1> phi[N];
+  real phi[N];
 }
 
 transformed data{
@@ -27,8 +27,8 @@ transformed data{
  
   // dot product function does not really exist for real * integer....
   for (n in 1:N){
+    D_wildtype[n] =  deaths[n] * (1-phi[n]);
     D_alpha[n] =  deaths[n] * phi[n];
-    D_alpha[n] =  deaths[n] * (1-phi[n]);
   }
 
   //pre-calculate values of the gamma pdf
@@ -66,7 +66,7 @@ transformed parameters{
   }
 
 
-  // what happens when n=1 below...
+  // ugly convolutions
   for (n in 1:N)
   {
     if(n < L_h_wildtype)
@@ -86,7 +86,6 @@ transformed parameters{
     RD_wildtype[n] += 0; //R_wildtype[n] * h0; 
   }
 
-  // what happens when n=1 below...
   for (n in 1:N)
   {
     if(n < L_h_alpha)
@@ -104,27 +103,24 @@ transformed parameters{
     }
     RD_alpha[n] += 0; //R_alpha[n] * h0; 
   }
-  // for (n in 1:N){
-  //   // s = 0
-  //   RD_wildtype[n] = R0_wildtype * h_wildtype[n]; 
-  //   RD_alpha[n] = R0_alpha * h_alpha[n]; 
-  //   // s = 1, ..., n-1
-  //     RD_alpha[n] += R_alpha[s] * h_alpha[n-s];
-  //   }
-  //   // I think I am assuming the below is 0...
-  //   // s = n
-  //   RD_wildtype[n] += 0; //R_wildtype[n] * h0; 
-  //   RD_alpha[n] += 0; // R_alpha[n] * h0; 
-  // }
+
+
+
+
+
 }
 
 model{
   // really don t like the name, instead conv_D_w.
   real conv_phiDw_wildtype;
   real conv_phiDw_alpha;
+  real mu[N];
   int idx_wildtype;
   int idx_alpha;
   
+  //initialise mu = -1 for diagnostics purposes:
+  mu = rep_array(-1, N);
+
   // Priors: 
   R0_wildtype ~ uniform(0,5);
   R0_alpha ~ uniform(0,5);
@@ -136,7 +132,12 @@ model{
   // Do not consider the first deaths, there are no past deaths which 
   //   the model can use to justify their existence.
   // deaths[1] ~ neg_binomial_2(RD[1] * (deaths0 * omega[1] + deaths[1] * omega0), delta);
-  //
+  
+  for (n in 1:2)
+  {
+
+  }
+
   for (n in 2:N){
     // sumD_omega = deaths0 * omega[n]; // s = 0
     // initialise convolutions values
@@ -153,10 +154,20 @@ model{
       conv_phiDw_alpha += D_alpha[n-s] * w_alpha[s];
     }
 
+    print("")
+    print("The value of conv_phiDw_wildtype[", n, "] is ", conv_phiDw_wildtype);
+    print("The value of conv_phiDw_alpha[", n, "] is ", conv_phiDw_alpha);
     // no no no: w[0] should be 0
     // sumD_omega += deaths[n] * omega0; // s = n
-    deaths[n] ~ neg_binomial_2(RD_wildtype[n] * conv_phiDw_wildtype + RD_alpha[n] * conv_phiDw_alpha , delta);
+    mu[n] = RD_wildtype[n] * conv_phiDw_wildtype + RD_alpha[n] * conv_phiDw_alpha;
+    print("The value of mu[", n, "] is ", mu[n]);
+    deaths[n] ~ neg_binomial_2( mu[n] , delta);
 
   }
 }
 
+generated quantities{
+
+  real conv_w_test;
+  real conv_a_test;
+}
