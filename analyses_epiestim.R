@@ -8,7 +8,6 @@
 library(data.table)
 library(ggplot2)
 library(EpiEstim)
-library
 
 ################
 #    PATHS     #
@@ -26,6 +25,7 @@ stopifnot(dir.exists(indir))
 outdir <- file.path(indir, 'results')
 data.dir <- file.path(indir, 'data')
 
+# TODO: change data to gov + phi data (proportion of alpha deaths)
 path.who.deaths=file.path(data.dir, 'WHO_coviddeaths_bycountry_processed.csv')
 path.mobility.data=file.path(data.dir, 'apple_mobility_bycountry_processed.csv')
 
