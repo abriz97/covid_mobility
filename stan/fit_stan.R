@@ -66,6 +66,8 @@ results.dir <- file.path(indir, 'results')
 path.mobility.data.uk <- file.path(data.dir, 'apple_mobility_bycountry_processed_UK.csv')
 path.gov.data <- file.path(data.dir, 'UKgovernment_deaths_cases.csv')
 # make.figures <- 1
+path.alpha.proportions <- file.path(data.dir,'alpha_proportion.csv')
+
 
 
 ################
@@ -284,15 +286,35 @@ dmobility <- fread(path.mobility.data.uk)
 setnames(dcovid, 'country', 'Country')
 setnames(dmobility, 'country', 'Country')
 
-# TODO: get wiki data and load
 # while waiting for alpha prevalence, assume it increases linearly from 0 to 1 linearly.
-dalpha <- dcovid[, .(Country, date, proportion=0)]
-dalpha[ date >= '2020-10-12', proportion:=NA]
-dalpha[ date >= '2021-03-15', proportion:=1]
+dalpha <- fread(path.alpha.proportions)
+setnames(dalpha, 'country', 'Country')
+dalpha[, proportion := proportion/100]
+dalpha <- merge(dalpha, dcovid[, .(Country, date)], all.y=T)
+
+
+cat('Assume alpha can t go down after maximum...\n')
+dalpha[!is.na(proportion), {
+        z <- max(proportion, na.rm=TRUE);
+        idx <- which.max(proportion);
+        list(proportion = c(proportion[1:idx], rep(z, .N-idx)), date)
+        }, by='Country'] -> dalpha
+cat('Assume it is 1 by end of study period:', as.character(args$max_date) ,'...\n\n')
+dalpha <- merge(dalpha, dcovid[, .(Country, date)], all.y=T, by=c('Country', 'date'))
+dalpha[ date >= args$max_date, proportion := 1 ]
+dalpha[ is.na(proportion) & date < '2021-01-01', proportion := 0 ]
 dalpha[ , proportion := zoo::na.approx(proportion) ]
-if(0) plot( dalpha$date, dalpha$proportion)
 
+p <- ggplot(dalpha,  aes(x=date, y=proportion, color=Country)) +
+        geom_line() +
+        theme_bw() + 
+        scale_y_continuous(labels=scales::percent_format(scale=100))+
+        labs(x='', y='Proportion',
+             title='Estimated proportion of reported cases with alpha variant')
 
+filename <- file.path(results.dir,
+                      paste0(args$country ,'_alpha_by_country.png'))
+ggsave(filename, p, width=6, height=5)
 
 ## FIT STAN
 #__________
@@ -304,9 +326,12 @@ stan.model.path <- file.path(indir, 'stan', 'mobility.stan')
 model <- stan_model(stan.model.path)
 fit <- sampling(model,
                 data=stan_data, 
-                chains = 2,
-                iter=100
+                chains = 4,
+                iter=1000
 )
+print(fit, pars = 'RD_alpha[1]')
+print(fit, pars = 'RD_wildtype[1]')
+# print(fit, pars = 'mu[1]')
 
 if(0)
 {
@@ -328,26 +353,31 @@ if(0)
         stan_data$phi
         tail(tmp_w)
         tail(tmp_a)
-
-
-
-        dimnames(tmp_a)
-        tmp <- apply(tmp_a, 3, c)
-        colnames(tmp) <- gsub('[A-z]|\\_|\\[|\\]','',colnames(tmp))
-        head(tmp)
-        dim(apply(tmp_a, 3, c))
 }
 
-# save fit
-tmp <- format(Sys.Date(), '%y%m%d')
-filename = file.path(results.dir,
-                     paste0('chains_', args$country, '_', tmp, '.rds')
-)
-saveRDS(fit, filename)
+if(0)
+{
+        # save fit
+        tmp <- format(Sys.Date(), '%y%m%d')
+        filename = file.path(results.dir,
+                             paste0('chains_', args$country, '_', tmp, '.rds'))
+        saveRDS(fit, filename)
+}else{
+        tmp <- format(Sys.Date(), '%y%m%d')
+        filename = file.path(results.dir,
+                             paste0('chains_', args$country, '_', tmp, '.rda')
+        )
+        save.image(filename)
+}
 
 # Get parameter names stan
 summary(fit)
 prms <- grep('^R0|^beta|delta', names(fit), value=TRUE)
+
+
+mcmc_pairs(fit, regex_pars = '^R0')
+mcmc_pairs(fit, regex_pars = '^beta')
+mcmc_pairs(fit, regex_pars = '^R0')
 
 # First plots
 plot(fit, pars = prms)
@@ -363,13 +393,3 @@ plot(fit, pars = grep('beta', prms, value=TRUE),
 
 plot(fit, pars = prms,
      plotfun = "rhat") + ggtitle("Example of adding title to plot")
-
-tmp <- format(Sys.Date(), '%y%m%d')
-filename = file.path(results.dir,
-                     paste0('chains_', args$country, '_', tmp, '.rda')
-)
-save.image(filename)
-
-
-grep('^R_wildtype', names(fit), value=TRUE) |> uniqueN()
-grep('^R_wildtype', names(fit), value=TRUE) |> length()

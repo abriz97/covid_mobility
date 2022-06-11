@@ -9,6 +9,7 @@ library(rstan)
 library(data.table)
 library(ggplot2)
 library(bayesplot)
+library(ggpubr)
 
 ################
 #  ARGUMENTS   #
@@ -152,12 +153,13 @@ dict_daydate[, day := seq(.N)]
 dict_daydate
 
 # calculate convolutions for mean of NB:
+# TODO: needs to understand whether I need to use tail or head for the convolution....
 with(stan_data,
      {
              tmp <- convolve(deaths * (1-phi),  w_wildtype, type='open');
              data.table(
                         date = dates,
-                        wildtype = head(c(0, tmp), length(deaths))
+                        wildtype = tail(c(0, tmp), length(deaths))
              )
      }
 ) -> conv_wildtype
@@ -167,7 +169,7 @@ with(stan_data,
              tmp <- convolve(deaths * phi,  w_alpha, type='open');
              data.table(
                         date = dates,
-                        alpha = head(c(0, tmp), length(deaths))
+                        alpha = tail(c(0, tmp), length(deaths))
              )
      }
 ) -> conv_alpha
@@ -194,16 +196,19 @@ g <- ggplot(pa, aes(x=date, color=prm, fill=prm)) +
         labs(x='', y='variant-specific Deaths reproduction number')
 
 # mean of NB against deaths:
+# not really the correct way to compute post quantiles but it is just to get an idea
 setkey(pa, prm, day, date)
 cols <- c('CL', 'IL', 'M', 'IU', 'CU')
 
 tmp1 <- pa[ prm == 'RD_alpha', lapply(.SD, `*`, convs_phiDw$alpha ) , .SDcols=cols]
-tmp1[, `:=` (day = 1:.N, variant='alpha')]
 tmp2 <- pa[ prm == 'RD_wildtype', lapply(.SD, `*`, convs_phiDw$wildtype ) , .SDcols=cols]
+tmp3 <- tmp1 + tmp2
+tmp1[, `:=` (day = 1:.N, variant='alpha')]
 tmp2[, `:=` (day = 1:.N, variant='wildtype')]
-pas <- rbind(tmp2, tmp1)
+tmp3[, `:=` (day = 1:.N, variant='overall')]
+pas <- rbind(tmp2, tmp1, tmp3)
 pas <- merge(dict_daydate, pas, all.y=T)
-rm(tmp1, tmp2)
+rm(tmp1, tmp2, tmp3)
 
 # get deaths data
 with(stan_data,
@@ -215,18 +220,20 @@ with(stan_data,
 tmp
 
 # Joint
-p0 <- ggplot(data=pas, aes(x=date, color=variant, fill=variant)) + 
+p0 <- ggplot(data=pas[variant=='overall'], aes(x=date)) + 
         geom_col(data=tmp, aes(y=deaths, fill=variant)) + 
         geom_line(aes(y=M)) + 
-        geom_ribbon(aes(ymin=IL, ymax=IU), alpha=.5) +
-        facet_grid(~'Overall') +
+        geom_ribbon(aes(ymin=IL, ymax=IU), color='grey80', fill='grey80', alpha=.5) +
+        facet_grid(~'overall') +
         scale_x_date(breaks='1 month' , date_labels = "%b-%y") +
         theme_bw() + 
         theme(legend.position='bottom') +
         labs(x='', y='COVID-19 attributable deaths')
+p0
 
 # one var
-p1 <- ggplot(data=pas, aes(x=date, color=variant, fill=variant)) + 
+p1 <- ggplot(data=pas[variant != 'overall'],
+             aes(x=date, color=variant, fill=variant)) + 
         geom_col(data=tmp, aes(y=deaths), color='grey80') + 
         geom_line(aes(y=M)) + 
         geom_ribbon(aes(ymin=IL, ymax=IU), alpha=.5) + 
@@ -236,12 +243,17 @@ p1 <- ggplot(data=pas, aes(x=date, color=variant, fill=variant)) +
         theme(legend.position='bottom') + 
         labs(x='', y='COVID-19 attributable deaths')
 
-require(ggpubr)
-ggarrange(p0, p1,
-          nrow=2,
-          legend='bottom',
-          common.legend=TRUE)
+library(ggpubr)
+p <- ggarrange(p0, p1,
+               nrow=2,
+               legend='bottom',
+               common.legend=TRUE)
+p <- annotate_figure(p, top=paste0(args$country, ': Modelled expected deaths by variant, and overall.'))
+p
 
+filename <- file.path(results.dir,
+                      paste0(args$country ,'_expected_deaths_overall_and_byvariant.png'))
+ggsave(filename, p, width=10, height=8)
 
 # Plot posterior R's 
 pa <- rbind(
