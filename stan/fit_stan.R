@@ -372,24 +372,30 @@ if(0)
 
 # Get parameter names stan
 summary(fit)
-prms <- grep('^R0|^beta|delta', names(fit), value=TRUE)
 
 
-mcmc_pairs(fit, regex_pars = '^R0')
-mcmc_pairs(fit, regex_pars = '^beta')
-mcmc_pairs(fit, regex_pars = '^R0')
 
 # First plots
-plot(fit, pars = prms)
-plot(fit, pars = prms,
-     show_density = TRUE, ci_level = 0.5, fill_color = "purple")
-plot(fit, pars = prms[1],
-     plotfun = "hist", include = FALSE)
+if(0)
+{
+        prms <- grep('^R0|^beta|delta', names(fit), value=TRUE)
 
-plot(fit, pars = grep('R0', prms, value=TRUE),  
-     plotfun = "trace" , inc_warmup = TRUE)
-plot(fit, pars = grep('beta', prms, value=TRUE),  
-     plotfun = "trace" , inc_warmup = TRUE)
+        mcmc_pairs(fit, regex_pars = '^R0')
+        mcmc_pairs(fit, regex_pars = '^beta')
+        mcmc_pairs(fit, regex_pars = '^R0')
 
-plot(fit, pars = prms,
-     plotfun = "rhat") + ggtitle("Example of adding title to plot")
+        plot(fit, pars = prms)
+        plot(fit, pars = prms,
+             show_density = TRUE, ci_level = 0.5, fill_color = "purple")
+        plot(fit, pars = prms[1],
+             plotfun = "hist", include = FALSE)
+
+        plot(fit, pars = grep('R0', prms, value=TRUE),  
+             plotfun = "trace" , inc_warmup = TRUE)
+        plot(fit, pars = grep('beta', prms, value=TRUE),  
+             plotfun = "trace" , inc_warmup = TRUE)
+
+        plot(fit, pars = prms,
+             plotfun = "rhat") + ggtitle("Example of adding title to plot")
+}
+
