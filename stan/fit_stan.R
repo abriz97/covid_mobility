@@ -192,11 +192,11 @@ make_dataset <- function(country=args$country, max_date=args$max_date, ratio_alp
 
         # add serial interval distribution
         stan_data$w_wildtype <- .make_discrete_gamma_pmf(mean=serial_interval$wildtype$mean,
-                                               std=case2death_interval$wildtype$std)
+                                               std=serial_interval$wildtype$std)
         stan_data$L_w_wildtype <- length(stan_data$w_wildtype)
 
-        stan_data$w_alpha <- .make_discrete_gamma_pmf(mean=case2death_interval$alpha$mean,
-                                               std=case2death_interval$alpha$std)
+        stan_data$w_alpha <- .make_discrete_gamma_pmf(mean=serial_interval$alpha$mean,
+                                               std=serial_interval$alpha$std)
         stan_data$L_w_alpha <- length(stan_data$w_alpha)
 
         # find estimated proportion of deaths per variant 
