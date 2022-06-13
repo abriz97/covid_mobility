@@ -4,6 +4,7 @@
 # mobility, UK government data, variant frequency
 
 # Run as 
+# Rscript -c COUNTRY 
 
 ################
 # DEPENDENCIES #
@@ -32,6 +33,13 @@ option_list <- list(
     default = 1.6,
     help = "Ratio between Fatality ratio of Alpha and Fatality Ratio of Wildtype[default=1.6]",
     dest = "ratio_alpha_mortality"
+  ),
+  optparse::make_option(
+    "--start_criterion",
+    type = 'character',
+    default = NA_character_, 
+    help = 'Criterion to chose starting date of epidemic', 
+    dest = 'start_criterion'
   ),
   optparse::make_option(
     "--max_date",
@@ -67,7 +75,6 @@ path.mobility.data.uk <- file.path(data.dir, 'apple_mobility_bycountry_processed
 path.gov.data <- file.path(data.dir, 'UKgovernment_deaths_cases.csv')
 # make.figures <- 1
 path.alpha.proportions <- file.path(data.dir,'alpha_proportion.csv')
-
 
 
 ################
@@ -112,8 +119,6 @@ make_dataset <- function(country=args$country, max_date=args$max_date, ratio_alp
 
         # ratio_alpha_mortality = 1.6
         # country= 'England'
-
-
         .make_discrete_gamma_pmf <- function(mean, std)
         {
                 # r uses scale rate parametrisation, where
@@ -155,8 +160,11 @@ make_dataset <- function(country=args$country, max_date=args$max_date, ratio_alp
         ddata <- ddata[!is.na(mobility)]
 
         cat('Selecting study period...\n')
-        cat('Start epidemic from day of 30th cum death as in Flaxman et al...: ')
-        ddata <- ddata[cumdeaths >= 30]
+        if(!is.na(args$start_criterion) & args$start_criterion == 'Flaxman')
+        {
+                cat('Start epidemic from day of 30th cum death as in Flaxman et al...: ')
+                ddata <- ddata[cumdeaths >= 30]
+        }
         cat(ddata[, as.character(min(date))], '\n')
         cat('Truncating epidemic on:',  as.character(max_date), '\n')
         ddata <- ddata[date <= max_date]
@@ -172,8 +180,8 @@ make_dataset <- function(country=args$country, max_date=args$max_date, ratio_alp
         serial_interval$alpha <-  list(mean = 6.48, std=3.83)
 
         case2death_interval <- list(wildtype=list(),alpha=list())
-        case2death_interval$wildtype <- list(mean= 18.8, std=8.46)
-        case2death_interval$alpha <- list(mean= 18.8, std=8.46)
+        case2death_interval$wildtype <- list(mean= 22, std=10)
+        case2death_interval$alpha <- list(mean= 22, std=10)
 
         stan_data <- list(
                 N = ddata[, .N],
@@ -200,24 +208,29 @@ make_dataset <- function(country=args$country, max_date=args$max_date, ratio_alp
         stan_data$L_w_alpha <- length(stan_data$w_alpha)
 
         # find estimated proportion of deaths per variant 
-        dalpha_tmp <- dalpha[Country==country,,]
-        dalpha_tmp <- merge(dalpha_tmp, 
+        dalpha_tmp <- merge(dalpha, 
                             dcovid[, .(Country, date,cases)],
                             by=c('Country', 'date'))
 
-        dalpha_tmp[, cases := .ma(cases, n=7)]
-        dalpha_tmp[!is.na(cases)]
-        ggplot(dalpha_tmp, aes(x=date, y=cases)) + geom_point()
+        dalpha_tmp[, cases := .ma(cases, n=7), by='Country']
+        ggplot(dalpha_tmp, aes(x=date, y=cases)) + geom_point() + facet_grid(~Country)
 
         dalpha_tmp <- dalpha_tmp[!is.na(cases)]
-        dalpha_tmp[, alpha_conv := convolve.past(proportion*cases, stan_data$h_alpha )]
-        dalpha_tmp[, wildtype_conv := convolve.past((1-proportion)*cases, stan_data$h_wildtype )]
+        dalpha_tmp[, alpha_conv := convolve.past(proportion*cases, stan_data$h_alpha ), by='Country']
+        dalpha_tmp[, wildtype_conv := convolve.past((1-proportion)*cases, stan_data$h_wildtype ), by='Country']
 
         dalpha_tmp[, tmp := ratio_alpha_mortality * alpha_conv / wildtype_conv ]
         dalpha_tmp[, phi := 1/(1+tmp^(-1))]
         dalpha_tmp[, tmp := NULL]
 
-        ggplot(dalpha_tmp, aes(x=date, y=phi)) + geom_line()
+        filename = file.path(data.dir, 'ratio_alpha_mortality.csv')
+        if(!file.exists(filename))
+        {
+                cat('Saving', filename, '...\n')
+                fwrite(dalpha_tmp, filename)
+        }
+
+        dalpha_tmp <- dalpha[Country==country,,]
 
         if(args$make.figures) # Show deaths attribution by variant
         {
@@ -257,6 +270,7 @@ make_dataset <- function(country=args$country, max_date=args$max_date, ratio_alp
 
         # merge with ddata to subset to correct time window
         dalpha_tmp <- merge(ddata[, .(date)], dalpha_tmp, all.x=TRUE)
+        dalpha_tmp[is.na(phi), phi := 0]
 
         stan_data$phi <- dalpha_tmp$phi
 
@@ -292,7 +306,6 @@ setnames(dalpha, 'country', 'Country')
 dalpha[, proportion := proportion/100]
 dalpha <- merge(dalpha, dcovid[, .(Country, date)], all.y=T)
 
-
 cat('Assume alpha can t go down after maximum...\n')
 dalpha[!is.na(proportion), {
         z <- max(proportion, na.rm=TRUE);
@@ -319,6 +332,7 @@ ggsave(filename, p, width=6, height=5)
 ## FIT STAN
 #__________
 
+
 stan_data <- make_dataset(country=args$country)
 options(mc.cores = parallel::detectCores())
 
@@ -344,13 +358,10 @@ if(0)
         tmp_w <- tmp[,, dimnames(tmp)$parameters %in% nms_w ]
         tmp_a <- tmp[,, dimnames(tmp)$parameters %in% nms_a ]
 
-        tmp_w
-        tmp_a
 
         tmp_w <- unname(tmp_w)[2, 2, ]
         tmp_a <- unname(tmp_a)[2, 2, ]
 
-        stan_data$phi
         tail(tmp_w)
         tail(tmp_a)
 }
@@ -372,7 +383,6 @@ if(0)
 
 # Get parameter names stan
 summary(fit)
-
 
 
 # First plots
@@ -398,4 +408,6 @@ if(0)
         plot(fit, pars = prms,
              plotfun = "rhat") + ggtitle("Example of adding title to plot")
 }
+
+# cmd <- paste0('Rscript --country ', args$country)
 
