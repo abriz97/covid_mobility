@@ -1,7 +1,9 @@
 # raw data copy-pasted into CSV from
 # https://en.wikipedia.org/wiki/SARS-CoV-2_Alpha_variant#Spread_in_Europe
 
-raw_data = read.csv("~/Desktop/alpha_wikipedia.csv", row.names = 1)
+my_path = "~/Desktop/covid_mobility"
+raw_data = read.csv(file.path(my_path, "/data/alpha_wikipedia.csv"), row.names = 1)
+
 first_val <- function(x){
   return(as.numeric(strsplit(x, '%')[[1]][1]))
 }
