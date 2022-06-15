@@ -7,7 +7,7 @@ library(data.table)
 
 path_res = '/Users/annamenacher/Downloads/results_epi/'
 
-plotsdata_org = read.csv('https://raw.githubusercontent.com/abriz97/covid_mobility/main/data/UKgovernment_deaths_cases.csv')
+data_org = read.csv('https://raw.githubusercontent.com/abriz97/covid_mobility/main/data/UKgovernment_deaths_cases.csv')
 data_phi = read.csv('https://raw.githubusercontent.com/abriz97/covid_mobility/main/data/ratio_alpha_mortality.csv')
 data_variant = read.csv('https://raw.githubusercontent.com/abriz97/covid_mobility/main/data/alpha_breakdown.csv')
 
@@ -22,11 +22,18 @@ country = 'England'
 variant = 'alpha'
 ##################
 
+ind_phi = which(data_phi$date == '2020-10-07', arr.ind = T)
+ind_phi2 = which(data_phi$date == '2021-04-01', arr.ind = T)
+
+ind_org = which(data_org$date == '2020-10-07', arr.ind = T)
+ind_org2 = which(data_org$date == '2021-04-01', arr.ind = T)
+
+
 # dates from 2020-10-07 to 2021-04-01
-countries = data_phi$Country[248:424]
-dates = data_phi[248:424,2]
-deaths = round(data_phi[248:424,7]*data_org[251:427,3],0)
-cases = round(data_phi[248:424,3]*data_phi[248:424,4],0)
+countries = data_phi$Country[ind_phi:ind_phi2]
+dates = data_phi[ind_phi:ind_phi2,2]
+deaths = round(data_phi[ind_phi:ind_phi2,7]*data_org[ind_org:ind_org2,3],0)
+cases = round(data_phi[ind_phi:ind_phi2,3]*data_phi[ind_phi:ind_phi2,4],0)
 
 data_alpha = data.frame('date' = dates, 'cases' = cases, 'deaths' = deaths)
 
@@ -64,12 +71,22 @@ country = 'England'
 variant = 'wildtype'
 ##################
 
-# dates from 2020-03-08 to 2021-04-01
-countries = data_phi$Country[35:424]
-dates = data_phi[35:424,2]
+ind_phi = which(data_phi$date == '2020-03-19', arr.ind = T)
+ind_phi2 = which(data_phi$date == '2021-04-01', arr.ind = T)
+ind_phi3 = which(data_phi$date == '2020-10-08', arr.ind = T)
+
+
+ind_org = which(data_org$date == '2020-03-19', arr.ind = T)
+ind_org2 = which(data_org$date == '2021-04-01', arr.ind = T)
+ind_org3 = which(data_org$date == '2020-10-07', arr.ind = T)
+ind_org4 = which(data_org$date == '2020-10-08', arr.ind = T)
+
+# dates from 2020-03-19 to 2021-04-01
+countries = data_phi$Country[ind_phi:ind_phi2]
+dates = data_phi[ind_phi:ind_phi2,2]
 # dates from 2020-03-08 to 2020-10-07 AND 2020-10-08 to 2021-04-01
-deaths = c(data_org[38:250,3], round(data_org[251:427,3]*(1-data_phi[248:424,7]),0))
-cases = c(data_org[38:250,5], round(data_org[251:427,5]*(1-data_phi[248:424,3]),0))
+deaths = c(data_org[ind_org:ind_org3,3], round(data_org[ind_org4:ind_org2,3]*(1-data_phi[ind_phi3:ind_phi2,7]),0))
+cases = c(data_org[ind_org:ind_org3,5], round(data_org[ind_org4:ind_org2,5]*(1-data_phi[ind_phi3:ind_phi2,3]),0))
 
 data_wildtype = data.frame('date' = dates, 'cases' = cases, 'deaths' = deaths)
 
@@ -107,11 +124,19 @@ country = 'England'
 variant = 'joint'
 ##################
 
-# dates from 2020-03-08 to 2021-04-01
-countries = data_phi$Country[35:424]
-dates = data_phi[35:424,2]
-deaths = data_org[38:427,3]
-cases = data_org[38:427,5]
+
+ind_phi = which(data_phi$date == '2020-03-19', arr.ind = T)
+ind_phi2 = which(data_phi$date == '2021-04-01', arr.ind = T)
+
+
+ind_org = which(data_org$date == '2020-03-19', arr.ind = T)
+ind_org2 = which(data_org$date == '2021-04-01', arr.ind = T)
+
+# dates from 2020-03-19 to 2021-04-01
+countries = data_phi$Country[ind_phi:ind_phi2]
+dates = data_phi[ind_phi:ind_phi2,2]
+deaths = data_org[ind_org:ind_org2,3]
+cases = data_org[ind_org:ind_org2,5]
 
 data_joint = data.frame('date' = dates, 'cases' = cases, 'deaths' = deaths)
 
